@@ -40,7 +40,7 @@ void ExtractSift(SiftData &siftData, CudaImage &img, int numOctaves, double init
 void InitSiftData(SiftData &data, int num = 1024, bool host = false, bool dev = true);
 void FreeSiftData(SiftData &data);
 void PrintSiftData(SiftData &data, cudaStream_t stream);
-double MatchSiftData(SiftData &data1, SiftData &data2, cudaStream_t stream);
-double FindHomography(SiftData &data,  float *homography, int *numMatches, int numLoops = 1000, float minScore = 0.85f, float maxAmbiguity = 0.95f, float thresh = 5.0f, cudaStream_t stream = 0);
+void MatchSiftData(SiftData &data1, SiftData &data2, cudaStream_t stream);
+void FindHomography(SiftData &data,  float *homography, int *numMatches, int numLoops = 1000, float minScore = 0.85f, float maxAmbiguity = 0.95f, float thresh = 5.0f, cudaStream_t stream = 0);
 
 #endif

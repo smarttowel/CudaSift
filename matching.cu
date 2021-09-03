@@ -997,7 +997,7 @@ __global__ void TestHomographies(float *d_coord, float *d_homo,
 
 //================= Host matching functions =====================//
 
-double FindHomography(SiftData &data, float *homography, int *numMatches, int numLoops, float minScore, float maxAmbiguity, float thresh, cudaStream_t stream)
+void FindHomography(SiftData &data, float *homography, int *numMatches, int numLoops, float minScore, float maxAmbiguity, float thresh, cudaStream_t stream)
 {
   *numMatches = 0;
   homography[0] = homography[4] = homography[8] = 1.0f;
@@ -1007,14 +1007,13 @@ double FindHomography(SiftData &data, float *homography, int *numMatches, int nu
   SiftPoint *d_sift = data.m_data;
 #else
   if (data.d_data==NULL)
-    return 0.0f;
+    return;
   SiftPoint *d_sift = data.d_data;
 #endif
-  TimerGPU timer(0);
   numLoops = iDivUp(numLoops,16)*16;
   int numPts = data.numPts;
   if (numPts<8)
-    return 0.0f;
+    return;
   int numPtsUp = iDivUp(numPts, 16)*16;
   float *d_coord, *d_homo;
   int *d_randPts, *h_randPts;
@@ -1081,27 +1080,21 @@ double FindHomography(SiftData &data, float *homography, int *numMatches, int nu
   safeCall(cudaFree(d_homo));
   safeCall(cudaFree(d_randPts));
   safeCall(cudaFree(d_coord));
-  double gpuTime = timer.read();
-#ifdef VERBOSE
-  printf("FindHomography time =         %.2f ms\n", gpuTime);
-#endif
-  return gpuTime;
 }
 
 
-double MatchSiftData(SiftData &data1, SiftData &data2, cudaStream_t stream)
+void MatchSiftData(SiftData &data1, SiftData &data2, cudaStream_t stream)
 {
-  TimerGPU timer(0);
   int numPts1 = data1.numPts;
   int numPts2 = data2.numPts;
   if (!numPts1 || !numPts2) 
-    return 0.0;
+    return;
 #ifdef MANAGEDMEM
   SiftPoint *sift1 = data1.m_data;
   SiftPoint *sift2 = data2.m_data;
 #else
   if (data1.d_data==NULL || data2.d_data==NULL)
-    return 0.0f;
+    return;
   SiftPoint *sift1 = data1.d_data;
   SiftPoint *sift2 = data2.d_data;
 #endif
@@ -1199,11 +1192,5 @@ double MatchSiftData(SiftData &data1, SiftData &data2, cudaStream_t stream)
     float *d_ptr = &data1.d_data[0].score;
     safeCall(cudaMemcpy2DAsync(h_ptr, sizeof(SiftPoint), d_ptr, sizeof(SiftPoint), 5*sizeof(float), data1.numPts, cudaMemcpyDeviceToHost, stream));
   }
-
-  double gpuTime = timer.read();
-#ifndef VERBOSE
-  printf("MatchSiftData time =          %.2f ms\n", gpuTime);
-#endif
-  return gpuTime;
 }		 
   

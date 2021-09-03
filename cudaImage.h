@@ -20,10 +20,10 @@ public:
   CudaImage();
   ~CudaImage();
   void Allocate(int width, int height, int pitch, bool withHost, float *devMem = NULL, float *hostMem = NULL);
-  double Download(cudaStream_t stream);
-  double Readback(cudaStream_t stream);
-  double InitTexture();
-  double CopyToTexture(CudaImage &dst, bool host, cudaStream_t stream);
+  void Download(cudaStream_t stream);
+  void Readback(cudaStream_t stream);
+  void InitTexture();
+  void CopyToTexture(CudaImage &dst, bool host, cudaStream_t stream);
 };
 
 int iDivUp(int a, int b);

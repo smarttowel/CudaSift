@@ -52,12 +52,12 @@ CudaImage::~CudaImage()
   t_data = NULL;
 }
   
-double CudaImage::Download()  
+double CudaImage::Download(cudaStream_t stream)  
 {
   TimerGPU timer(0);
   int p = sizeof(float)*pitch;
   if (d_data!=NULL && h_data!=NULL) 
-    safeCall(cudaMemcpy2D(d_data, p, h_data, sizeof(float)*width, sizeof(float)*width, height, cudaMemcpyHostToDevice));
+    safeCall(cudaMemcpy2DAsync(d_data, p, h_data, sizeof(float)*width, sizeof(float)*width, height, cudaMemcpyHostToDevice, stream));
   double gpuTime = timer.read();
 #ifdef VERBOSE
   printf("Download time =               %.2f ms\n", gpuTime);
@@ -65,11 +65,11 @@ double CudaImage::Download()
   return gpuTime;
 }
 
-double CudaImage::Readback()
+double CudaImage::Readback(cudaStream_t stream)
 {
   TimerGPU timer(0);
   int p = sizeof(float)*pitch;
-  safeCall(cudaMemcpy2D(h_data, sizeof(float)*width, d_data, p, sizeof(float)*width, height, cudaMemcpyDeviceToHost));
+  safeCall(cudaMemcpy2DAsync(h_data, sizeof(float)*width, d_data, p, sizeof(float)*width, height, cudaMemcpyDeviceToHost, stream));
   double gpuTime = timer.read();
 #ifdef VERBOSE
   printf("Readback time =               %.2f ms\n", gpuTime);
@@ -91,7 +91,7 @@ double CudaImage::InitTexture()
   return gpuTime;
 }
  
-double CudaImage::CopyToTexture(CudaImage &dst, bool host)
+double CudaImage::CopyToTexture(CudaImage &dst, bool host, cudaStream_t stream)
 {
   if (dst.t_data==NULL) {
     printf("Error CopyToTexture: No texture data\n");
@@ -103,10 +103,10 @@ double CudaImage::CopyToTexture(CudaImage &dst, bool host)
   }
   TimerGPU timer(0);
   if (host)
-    safeCall(cudaMemcpyToArray((cudaArray *)dst.t_data, 0, 0, h_data, sizeof(float)*pitch*dst.height, cudaMemcpyHostToDevice));
+    safeCall(cudaMemcpyToArrayAsync((cudaArray *)dst.t_data, 0, 0, h_data, sizeof(float)*pitch*dst.height, cudaMemcpyHostToDevice, stream));
   else
-    safeCall(cudaMemcpyToArray((cudaArray *)dst.t_data, 0, 0, d_data, sizeof(float)*pitch*dst.height, cudaMemcpyDeviceToDevice));
-  safeCall(cudaDeviceSynchronize());
+    safeCall(cudaMemcpyToArrayAsync((cudaArray *)dst.t_data, 0, 0, d_data, sizeof(float)*pitch*dst.height, cudaMemcpyDeviceToDevice, stream));
+  safeCall(cudaStreamSynchronize(stream));
   double gpuTime = timer.read();
 #ifdef VERBOSE
   printf("CopyToTexture time =          %.2f ms\n", gpuTime);

@@ -1,6 +1,7 @@
 #ifndef CUDASIFT_H
 #define CUDASIFT_H
 
+#include <cuda_runtime.h>
 #include "cudaImage.h"
 
 typedef struct {
@@ -35,11 +36,11 @@ typedef struct {
 void InitCuda(int devNum = 0);
 float *AllocSiftTempMemory(int width, int height, int numOctaves, bool scaleUp = false);
 void FreeSiftTempMemory(float *memoryTmp);
-void ExtractSift(SiftData &siftData, CudaImage &img, int numOctaves, double initBlur, float thresh, float lowestScale = 0.0f, bool scaleUp = false, float *tempMemory = 0);
+void ExtractSift(SiftData &siftData, CudaImage &img, int numOctaves, double initBlur, float thresh, float lowestScale = 0.0f, bool scaleUp = false, float *tempMemory = 0, cudaStream_t stream = 0);
 void InitSiftData(SiftData &data, int num = 1024, bool host = false, bool dev = true);
 void FreeSiftData(SiftData &data);
-void PrintSiftData(SiftData &data);
-double MatchSiftData(SiftData &data1, SiftData &data2);
-double FindHomography(SiftData &data,  float *homography, int *numMatches, int numLoops = 1000, float minScore = 0.85f, float maxAmbiguity = 0.95f, float thresh = 5.0f);
+void PrintSiftData(SiftData &data, cudaStream_t stream);
+double MatchSiftData(SiftData &data1, SiftData &data2, cudaStream_t stream);
+double FindHomography(SiftData &data,  float *homography, int *numMatches, int numLoops = 1000, float minScore = 0.85f, float maxAmbiguity = 0.95f, float thresh = 5.0f, cudaStream_t stream = 0);
 
 #endif

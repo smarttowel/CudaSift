@@ -997,7 +997,7 @@ __global__ void TestHomographies(float *d_coord, float *d_homo,
 
 //================= Host matching functions =====================//
 
-double FindHomography(SiftData &data, float *homography, int *numMatches, int numLoops, float minScore, float maxAmbiguity, float thresh)
+double FindHomography(SiftData &data, float *homography, int *numMatches, int numLoops, float minScore, float maxAmbiguity, float thresh, cudaStream_t stream)
 {
   *numMatches = 0;
   homography[0] = homography[4] = homography[8] = 1.0f;
@@ -1027,8 +1027,9 @@ double FindHomography(SiftData &data, float *homography, int *numMatches, int nu
   h_randPts = (int*)malloc(randSize);
   float *h_scores = (float *)malloc(sizeof(float)*numPtsUp);
   float *h_ambiguities = (float *)malloc(sizeof(float)*numPtsUp);
-  safeCall(cudaMemcpy2D(h_scores, szFl, &d_sift[0].score, szPt, szFl, numPts, cudaMemcpyDeviceToHost));
-  safeCall(cudaMemcpy2D(h_ambiguities, szFl, &d_sift[0].ambiguity, szPt, szFl, numPts, cudaMemcpyDeviceToHost));
+  safeCall(cudaMemcpy2DAsync(h_scores, szFl, &d_sift[0].score, szPt, szFl, numPts, cudaMemcpyDeviceToHost, stream));
+  safeCall(cudaMemcpy2DAsync(h_ambiguities, szFl, &d_sift[0].ambiguity, szPt, szFl, numPts, cudaMemcpyDeviceToHost, stream));
+  safeCall(cudaStreamSynchronize(stream));
   int *validPts = (int *)malloc(sizeof(int)*numPts);
   int numValid = 0;
   for (int i=0;i<numPts;i++) {
@@ -1051,20 +1052,21 @@ double FindHomography(SiftData &data, float *homography, int *numMatches, int nu
       h_randPts[i+2*numLoops] = validPts[p3];
       h_randPts[i+3*numLoops] = validPts[p4];
     }
-    safeCall(cudaMemcpy(d_randPts, h_randPts, randSize, cudaMemcpyHostToDevice));
-    safeCall(cudaMemcpy2D(&d_coord[0*numPtsUp], szFl, &d_sift[0].xpos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice));
-    safeCall(cudaMemcpy2D(&d_coord[1*numPtsUp], szFl, &d_sift[0].ypos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice));
-    safeCall(cudaMemcpy2D(&d_coord[2*numPtsUp], szFl, &d_sift[0].match_xpos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice));
-    safeCall(cudaMemcpy2D(&d_coord[3*numPtsUp], szFl, &d_sift[0].match_ypos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice));
-    ComputeHomographies<<<numLoops/16, 16>>>(d_coord, d_randPts, d_homo, numPtsUp);
-    safeCall(cudaDeviceSynchronize());
+    safeCall(cudaMemcpyAsync(d_randPts, h_randPts, randSize, cudaMemcpyHostToDevice, stream));
+    safeCall(cudaMemcpy2DAsync(&d_coord[0*numPtsUp], szFl, &d_sift[0].xpos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice, stream));
+    safeCall(cudaMemcpy2DAsync(&d_coord[1*numPtsUp], szFl, &d_sift[0].ypos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice, stream));
+    safeCall(cudaMemcpy2DAsync(&d_coord[2*numPtsUp], szFl, &d_sift[0].match_xpos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice, stream));
+    safeCall(cudaMemcpy2DAsync(&d_coord[3*numPtsUp], szFl, &d_sift[0].match_ypos, szPt, szFl, numPts, cudaMemcpyDeviceToDevice, stream));
+    ComputeHomographies<<<numLoops/16, 16, 0, stream>>>(d_coord, d_randPts, d_homo, numPtsUp);
+    safeCall(cudaStreamSynchronize(stream));
     checkMsg("ComputeHomographies() execution failed\n");
     dim3 blocks(1, numLoops/TESTHOMO_LOOPS);
     dim3 threads(TESTHOMO_TESTS, TESTHOMO_LOOPS);
-    TestHomographies<<<blocks, threads>>>(d_coord, d_homo, d_randPts, numPtsUp, thresh*thresh);
-    safeCall(cudaDeviceSynchronize());
+    TestHomographies<<<blocks, threads, 0, stream>>>(d_coord, d_homo, d_randPts, numPtsUp, thresh*thresh);
+    safeCall(cudaStreamSynchronize(stream));
     checkMsg("TestHomographies() execution failed\n");
-    safeCall(cudaMemcpy(h_randPts, d_randPts, sizeof(int)*numLoops, cudaMemcpyDeviceToHost));
+    safeCall(cudaMemcpyAsync(h_randPts, d_randPts, sizeof(int)*numLoops, cudaMemcpyDeviceToHost, stream));
+    safeCall(cudaStreamSynchronize(stream));
     int maxIndex = -1, maxCount = -1;
     for (int i=0;i<numLoops;i++) 
       if (h_randPts[i]>maxCount) {
@@ -1072,7 +1074,7 @@ double FindHomography(SiftData &data, float *homography, int *numMatches, int nu
 	maxIndex = i;
       }
     *numMatches = maxCount;
-    safeCall(cudaMemcpy2D(homography, szFl, &d_homo[maxIndex], sizeof(float)*numLoops, szFl, 8, cudaMemcpyDeviceToHost));
+    safeCall(cudaMemcpy2DAsync(homography, szFl, &d_homo[maxIndex], sizeof(float)*numLoops, szFl, 8, cudaMemcpyDeviceToHost, stream));
   }
   free(validPts);
   free(h_randPts);
@@ -1087,7 +1089,7 @@ double FindHomography(SiftData &data, float *homography, int *numMatches, int nu
 }
 
 
-double MatchSiftData(SiftData &data1, SiftData &data2)
+double MatchSiftData(SiftData &data1, SiftData &data2, cudaStream_t stream)
 {
   TimerGPU timer(0);
   int numPts1 = data1.numPts;
@@ -1114,17 +1116,17 @@ double MatchSiftData(SiftData &data1, SiftData &data2)
 #if 0 // K40c 10.9ms, 1080 Ti 3.8ms
   dim3 blocks1(numPts1, iDivUp(numPts2, 16));
   dim3 threads1(16, 16); // each block: 1 points x 16 points
-  MatchSiftPoints<<<blocks1, threads1>>>(sift1, sift2, d_corrData, numPts1, numPts2);
+  MatchSiftPoints<<<blocks1, threads1, 0, stream>>>(sift1, sift2, d_corrData, numPts1, numPts2);
 #else // K40c 7.6ms, 1080 Ti 1.4ms
   dim3 blocks(iDivUp(numPts1,16), iDivUp(numPts2, 16));
   dim3 threads(16, 16); // each block: 16 points x 16 points
-  MatchSiftPoints2<<<blocks, threads>>>(sift1, sift2, d_corrData, numPts1, numPts2);
+  MatchSiftPoints2<<<blocks, threads, 0, stream>>>(sift1, sift2, d_corrData, numPts1, numPts2);
 #endif
-  safeCall(cudaDeviceSynchronize());
+  safeCall(cudaStreamSynchronize(stream));
   dim3 blocksMax(iDivUp(numPts1, 16));
   dim3 threadsMax(16, 16);
-  FindMaxCorr<<<blocksMax, threadsMax>>>(d_corrData, sift1, sift2, numPts1, corrWidth, sizeof(SiftPoint));
-  safeCall(cudaDeviceSynchronize());
+  FindMaxCorr<<<blocksMax, threadsMax, 0, stream>>>(d_corrData, sift1, sift2, numPts1, corrWidth, sizeof(SiftPoint));
+  safeCall(cudaStreamSynchronize(stream));
   checkMsg("FindMaxCorr() execution failed\n");
   safeCall(cudaFree(d_corrData));
 #endif
@@ -1138,8 +1140,8 @@ double MatchSiftData(SiftData &data1, SiftData &data2)
   safeCall(cudaMalloc((void **)&d_corrData, sizeof(float) * corrSize));
   dim3 blocks(iDivUp(numPts1, block_dim));
   dim3 threads(block_dim, block_dim); 
-  FindMaxCorr3<<<blocks, threads >>>(d_corrData, sift1, sift2, numPts1, numPts2);
-  safeCall(cudaDeviceSynchronize());
+  FindMaxCorr3<<<blocks, threads, 0, stream>>>(d_corrData, sift1, sift2, numPts1, numPts2);
+  safeCall(cudaStreamSynchronize(stream));
   checkMsg("FindMaxCorr3() execution failed\n");
   safeCall(cudaFree(d_corrData));
 #endif
@@ -1148,8 +1150,8 @@ double MatchSiftData(SiftData &data1, SiftData &data2)
 #if 0 // K40c 8.9ms, 1080 Ti 2.1ms, 2080 Ti 1.0ms
   dim3 blocksMax(numPts1);
   dim3 threadsMax(FMC2W, FMC2H);
-  FindMaxCorr2<<<blocksMax, threadsMax>>>(sift1, sift2, numPts1, numPts2);
-  safeCall(cudaDeviceSynchronize());
+  FindMaxCorr2<<<blocksMax, threadsMax, 0, stream>>>(sift1, sift2, numPts1, numPts2);
+  safeCall(cudaStreamSynchronize(stream));
   checkMsg("FindMaxCorr2() execution failed\n");
 #endif
   
@@ -1157,8 +1159,8 @@ double MatchSiftData(SiftData &data1, SiftData &data2)
 #if 0 // K40c 9.2ms, 1080 Ti 1.3ms, 2080 Ti 1.1ms
   dim3 blocksMax2(iDivUp(numPts1, FMC2H));
   dim3 threadsMax2(FMC2W, FMC2H);
-  FindMaxCorr4<<<blocksMax2, threadsMax2>>>(sift1, sift2, numPts1, numPts2);
-  safeCall(cudaDeviceSynchronize());
+  FindMaxCorr4<<<blocksMax2, threadsMax2, 0, stream>>>(sift1, sift2, numPts1, numPts2);
+  safeCall(cudaStreamSynchronize(stream));
   checkMsg("FindMaxCorr4() execution failed\n");
 #endif
 
@@ -1166,36 +1168,36 @@ double MatchSiftData(SiftData &data1, SiftData &data2)
 #if 1
   dim3 blocksMax3(iDivUp(numPts1, 16), iDivUp(numPts2, 512));
   dim3 threadsMax3(16, 16);
-  CleanMatches<<<iDivUp(numPts1, 64), 64>>>(sift1, numPts1);
+  CleanMatches<<<iDivUp(numPts1, 64), 64, 0, stream>>>(sift1, numPts1);
   int mode = 10;
   if (mode==5)// K40c 5.0ms, 1080 Ti 1.2ms, 2080 Ti 0.83ms
-    FindMaxCorr5<<<blocksMax3, threadsMax3>>>(sift1, sift2, numPts1, numPts2);
+    FindMaxCorr5<<<blocksMax3, threadsMax3, 0, stream>>>(sift1, sift2, numPts1, numPts2);
   else if (mode==6) {                    // 2080 Ti 0.89ms
     threadsMax3 = dim3(32, 16);
-    FindMaxCorr6<<<blocksMax3, threadsMax3>>>(sift1, sift2, numPts1, numPts2);
+    FindMaxCorr6<<<blocksMax3, threadsMax3, 0, stream>>>(sift1, sift2, numPts1, numPts2);
   } else if (mode==7)                    // 2080 Ti 0.50ms  
-    FindMaxCorr7<<<blocksMax3, threadsMax3>>>(sift1, sift2, numPts1, numPts2);
+    FindMaxCorr7<<<blocksMax3, threadsMax3, 0, stream>>>(sift1, sift2, numPts1, numPts2);
   else if (mode==8) {                    // 2080 Ti 0.45ms
     blocksMax3 = dim3(iDivUp(numPts1, FMC_BW), iDivUp(numPts2, FMC_GH));
     threadsMax3 = dim3(FMC_NW, FMC_NH);
-    FindMaxCorr8<<<blocksMax3, threadsMax3>>>(sift1, sift2, numPts1, numPts2);
+    FindMaxCorr8<<<blocksMax3, threadsMax3, 0, stream>>>(sift1, sift2, numPts1, numPts2);
   } else if (mode==9) {                  // 2080 Ti 0.46ms
     blocksMax3 = dim3(iDivUp(numPts1, FMC_BW), iDivUp(numPts2, FMC_GH));
     threadsMax3 = dim3(FMC_NW, FMC_NH);
-    FindMaxCorr9<<<blocksMax3, threadsMax3>>>(sift1, sift2, numPts1, numPts2);
+    FindMaxCorr9<<<blocksMax3, threadsMax3, 0, stream>>>(sift1, sift2, numPts1, numPts2);
   } else if (mode==10) {                 // 2080 Ti 0.24ms
     blocksMax3 = dim3(iDivUp(numPts1, M7W));
     threadsMax3 = dim3(M7W, M7H/M7R);
-    FindMaxCorr10<<<blocksMax3, threadsMax3>>>(sift1, sift2, numPts1, numPts2);
+    FindMaxCorr10<<<blocksMax3, threadsMax3, 0, stream>>>(sift1, sift2, numPts1, numPts2);
   }
-  safeCall(cudaDeviceSynchronize());
+  safeCall(cudaStreamSynchronize(stream));
   checkMsg("FindMaxCorr5() execution failed\n");
 #endif
 
   if (data1.h_data!=NULL) {
     float *h_ptr = &data1.h_data[0].score;
     float *d_ptr = &data1.d_data[0].score;
-    safeCall(cudaMemcpy2D(h_ptr, sizeof(SiftPoint), d_ptr, sizeof(SiftPoint), 5*sizeof(float), data1.numPts, cudaMemcpyDeviceToHost));
+    safeCall(cudaMemcpy2DAsync(h_ptr, sizeof(SiftPoint), d_ptr, sizeof(SiftPoint), 5*sizeof(float), data1.numPts, cudaMemcpyDeviceToHost, stream));
   }
 
   double gpuTime = timer.read();

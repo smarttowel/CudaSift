@@ -1,4 +1,4 @@
-project('cudasift', 'cpp',
+project('cudasift', 'cpp', 'cuda',
     version: '1.0.0',
     default_options: ['cpp_std=c++14'])
 
@@ -9,7 +9,6 @@ cudasift_lib = static_library('cudasift',
                               'cudaSiftD.cu',
                               'cudaSiftH.cu',
                               'matching.cu',
-                               dependencies: [cuda_dep],
-                               override_options: ['cpp_std=c++14'])
+                               dependencies: [cuda_dep])
 cudasift_dep = declare_dependency(link_with: cudasift_lib,
                                   include_directories: include_directories('.'))

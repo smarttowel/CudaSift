@@ -9,6 +9,7 @@ cudasift_lib = static_library('cudasift',
                               'cudaSiftD.cu',
                               'cudaSiftH.cu',
                               'matching.cu',
+                               cuda_args: ['--Wno-deprecated-declarations'],
                                dependencies: [cuda_dep])
 cudasift_dep = declare_dependency(link_with: cudasift_lib,
                                   include_directories: include_directories('.'))

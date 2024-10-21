@@ -2,7 +2,7 @@ project('cudasift', 'cpp', 'cuda',
     version: '1.0.0',
     default_options: ['cpp_std=c++14'])
 
-cuda_versions = ['12.2', '11.7', '11.4', '10.2']
+cuda_versions = ['12.6', '12.2', '11.7', '11.4', '10.2']
 cuda_dep = []
 foreach version: cuda_versions
     cuda_dep = [dependency('cudart-' + version, required: false),
